@@ -4,6 +4,7 @@
 Graph::Graph(std::string edgelist, std::string nodelist): edgelist(edgelist), nodelist(nodelist) {
     this->ParseEdgelist();
     this->ParseNodelist();
+    std::cout << "graph parsed" << std::endl;
 }
 
 void Graph::ParseEdgelist() {
@@ -27,6 +28,7 @@ void Graph::ParseEdgelist() {
         }
         line_no ++;
     }
+    std::cout << "edgelist parsed" << std::endl;
 }
 
 void Graph::ParseNodelist() {
@@ -49,6 +51,8 @@ void Graph::ParseNodelist() {
         }
         line_no ++;
     }
+
+    std::cout << "nodelist parsed" << std::endl;
 }
 
 void Graph::SetIntAttribute(std::string attribute_key, int node, int attribute_value) {

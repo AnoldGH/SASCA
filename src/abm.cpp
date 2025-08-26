@@ -1006,10 +1006,13 @@ int ABM::main() {
 
         this->LogTime(current_year, "Update graph attributes (neighborhood sizes)");
         this->AssignPeakFitnessValues(graph, new_nodes_vec);
+        this->LogTime(current_year, "Assign peak fitness values");
         this->AssignFitnessLagDuration(graph, new_nodes_vec);
+        this->LogTime(current_year, "Assign fitness lag duration");
         this->AssignFitnessPeakDuration(graph, new_nodes_vec);
+        this->LogTime(current_year, "Assign fitness peak duration");
         this->PlantNodes(graph, new_nodes_vec, current_year - start_year + 1);
-        this->LogTime(current_year, "Assign fitness values to new nodes");
+        this->LogTime(current_year, "Plant nodes");
         new_nodes_vec.clear();
         new_edges_vec.clear();
         same_year_source_nodes.clear();
