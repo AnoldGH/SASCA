@@ -71,9 +71,9 @@ class ABM {
         void CalculateExpScores(std::unordered_map<int, double>& cached_results, int* src_arr, double* dst_arr, int len);
         void SampleFromNeighborhoods(std::unordered_map<int, std::vector<int>>& one_and_two_hop_neighborhood_map, int neighborhood_size_threshold, int max_neighborhood_size);
         int MakeCitations(Graph* graph, const std::unordered_map<int, int>& continuous_node_mapping, int current_year, const std::vector<int>& candidate_nodes, int* citations, double* pa_arr, double* recency_arr, double* fit_arr, double pa_weight, double rec_weight, double fit_weight, int current_graph_size, int num_citations);
-        void FillSameYearSourceNodes(std::set<int>& same_year_source_nodes, int current_year_new_nodes);
+        void FillSameYearSourceNodes(std::unordered_set<int>& same_year_source_nodes, int current_year_new_nodes);
         int MakeUniformRandomCitations(Graph* graph, const std::unordered_map<int, int>& reverse_continuous_node_mapping, std::vector<int>& generator_nodes, int* citations, int num_cited_so_far, int num_citations);
-        int MakeSameYearCitations(const std::set<int>& same_year_source_nodes, int num_new_nodes, const std::unordered_map<int, int>& reverse_continuous_node_mapping, int* citations, int current_graph_size);
+        int MakeSameYearCitations(const std::unordered_set<int>& same_year_source_nodes, int num_new_nodes, const std::unordered_map<int, int>& reverse_continuous_node_mapping, int* citations, int current_graph_size);
         void UpdateGraphAttributesWeights(Graph* graph, int next_node_id, double* pa_weight_arr, double* rec_weight_arr, double* fit_weight_arr, int len);
         void UpdateGraphAttributesAlphas(Graph* graph, int next_node_id, double* alpha_arr, int len);
         void UpdateGraphAttributesOutDegrees(Graph* graph, int next_node_id, int* out_degree_arr, int len);

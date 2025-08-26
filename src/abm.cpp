@@ -428,7 +428,7 @@ void ABM::CalculateExpScores(std::unordered_map<int, double>& cached_results, in
     }
 }
 
-void ABM::FillSameYearSourceNodes(std::set<int>& same_year_source_nodes, int current_year_new_nodes) {
+void ABM::FillSameYearSourceNodes(std::unordered_set<int>& same_year_source_nodes, int current_year_new_nodes) {
     size_t num_same_year_source_nodes = (size_t)std::floor(current_year_new_nodes * this->same_year_proportion);
     pcg_extras::seed_seq_from<std::random_device> rand_dev;
     pcg32 generator(rand_dev);
@@ -441,7 +441,7 @@ void ABM::FillSameYearSourceNodes(std::set<int>& same_year_source_nodes, int cur
     }
 }
 
-int ABM::MakeSameYearCitations(const std::set<int>& same_year_source_nodes, int num_new_nodes, const std::unordered_map<int, int>& reverse_continuous_node_mapping, int* citations, int current_graph_size) {
+int ABM::MakeSameYearCitations(const std::unordered_set<int>& same_year_source_nodes, int num_new_nodes, const std::unordered_map<int, int>& reverse_continuous_node_mapping, int* citations, int current_graph_size) {
     pcg_extras::seed_seq_from<std::random_device> rand_dev;
     pcg32 generator(rand_dev);
     std::uniform_int_distribution<int> int_uniform_distribution(0, num_new_nodes - 1);
@@ -467,7 +467,7 @@ int ABM::MakeUniformRandomCitations(Graph* graph, const std::unordered_map<int, 
     pcg_extras::seed_seq_from<std::random_device> rand_dev;
     pcg32 generator(rand_dev);
     std::uniform_int_distribution<int> int_uniform_distribution(0, (int)(graph->GetNodeSet().size() - 1));
-    std::set<int> selected;
+    std::unordered_set<int> selected;
     for(int i = 0; i < num_cited_so_far; i ++) {
         selected.insert(citations[i]);
     }
@@ -616,7 +616,7 @@ std::unordered_map<int, std::vector<int>> ABM::GetOneAndTwoHopNeighborhood(Graph
     one_and_two_hop_neighborhood_map[1] = std::vector<int>();
     one_and_two_hop_neighborhood_map[2] = std::vector<int>();
     if (this->neighborhood_sample == -1) {
-        std::set<int> visited;
+        std::unordered_set<int> visited;
         for(size_t i = 0; i < generator_nodes.size(); i ++) {
             int generator_node = generator_nodes.at(i);
             std::queue<std::pair<int, int>> to_visit;
@@ -652,7 +652,7 @@ std::unordered_map<int, std::vector<int>> ABM::GetOneAndTwoHopNeighborhood(Graph
         one_and_two_hop_neighborhood_map[1].reserve(this->neighborhood_sample);
         one_and_two_hop_neighborhood_map[2].reserve(this->neighborhood_sample);
         size_t max_neighborhood_size = this->neighborhood_sample;
-        std::set<int> visited;
+        std::unordered_set<int> visited;
         pcg_extras::seed_seq_from<std::random_device> rand_dev;
         pcg32 generator(rand_dev);
         for(size_t i = 0; i < generator_nodes.size(); i ++) {
@@ -855,7 +855,7 @@ int ABM::main() {
 
     std::vector<int> new_nodes_vec;
     std::vector<std::pair<int, int>> new_edges_vec;
-    std::set<int> same_year_source_nodes;
+    std::unordered_set<int> same_year_source_nodes;
     std::unordered_map<int, double> tanh_cached_results;
     for(int i = 0; i < 1000; i ++) {
         tanh_cached_results[i] = this->peak_constant * std::tanh((pow(i, 3)/this->delay_constant)*(1/this->peak_constant));
@@ -992,7 +992,9 @@ int ABM::main() {
         for(size_t i = 0; i < new_edges_vec.size(); i ++) {
             int new_node = new_edges_vec[i].first;
             int destination_id = new_edges_vec[i].second;
-            graph->AddEdge({new_node, destination_id});
+
+            std::pair<int, int> edge = {new_node, destination_id};
+            graph->AddEdgeNewNode(edge);
         }
         this->LogTime(current_year, "Add edges to graph");
 

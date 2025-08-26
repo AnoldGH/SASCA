@@ -21,7 +21,9 @@ void Graph::ParseEdgelist() {
         if(line_no != 0) {
             int integer_citing = std::stoi(current_line[0]);
             int integer_cited = std::stoi(current_line[1]);
-            this->AddEdge({integer_citing, integer_cited});
+
+            std::pair<int, int> edge = {integer_citing, integer_cited};
+            this->AddEdge(edge);
         }
         line_no ++;
     }
@@ -77,11 +79,17 @@ bool Graph::HasIntAttribute(std::string attribute_key, int node) const {
     return this->int_attribute_map.contains(attribute_key) && this->int_attribute_map.at(attribute_key).contains(node);
 }
 
-void Graph::AddEdge(std::pair<int, int> edge) {
+void Graph::AddEdge(std::pair<int, int>& edge) {
     this->forward_adj_map[edge.first].push_back(edge.second);
     this->backward_adj_map[edge.second].push_back(edge.first);
     this->AddNode(edge.first);
     this->AddNode(edge.second);
+}
+
+void Graph::AddEdgeNewNode(std::pair<int, int>& edge) {
+    this->forward_adj_map[edge.first].push_back(edge.second);
+    this->backward_adj_map[edge.second].push_back(edge.first);
+    this->AddNode(edge.first);
 }
 
 int Graph::GetInDegree(int node) const {
@@ -103,7 +111,7 @@ void Graph::AddNode(int u) {
     this->node_set.insert(u);
 }
 
-const std::set<int>& Graph::GetNodeSet() const {
+const std::unordered_set<int>& Graph::GetNodeSet() const {
     return this->node_set;
 }
 const std::unordered_map<int, std::vector<int>>& Graph::GetForwardAdjMap() const {

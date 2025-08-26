@@ -16,7 +16,8 @@
 class Graph {
     public:
         Graph(std::string edgelist, std::string nodelist);
-        void AddEdge(std::pair<int, int> edge);
+        void AddEdge(std::pair<int, int>& edge);
+        void AddEdgeNewNode(std::pair<int, int>& edge);
 
         static inline char get_delimiter(std::string filepath) {
             std::ifstream edgelist(filepath);
@@ -33,7 +34,7 @@ class Graph {
         }
 
 
-        const std::set<int>& GetNodeSet() const;
+        const std::unordered_set<int>& GetNodeSet() const;
         const std::unordered_map<int, std::vector<int>>& GetForwardAdjMap() const;
         const std::unordered_map<int, std::vector<int>>& GetBackwardAdjMap() const;
         void SetIntAttribute(std::string attribute_key, int node, int attribute_value);
@@ -54,7 +55,7 @@ class Graph {
 
     private:
 
-        std::set<int> node_set;
+        std::unordered_set<int> node_set;
         std::string edgelist;
         std::string nodelist;
 
