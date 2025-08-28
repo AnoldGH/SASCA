@@ -22,6 +22,13 @@ cmake --install .
 cd ${external_libs_full_path}
 git clone "https://github.com/imneme/pcg-cpp.git"
 git clone "https://github.com/jtilly/inih.git"
+mkdir kuzu
+cd kuzu
+# download kuzu release v0.11.2
+curl -L -O https://github.com/kuzudb/kuzu/releases/download/v0.11.2/libkuzu-linux-x86_64.tar.gz
+tar xzf libkuzu-*.tar.gz
+rm libkuzu-*.tar.gz
+# rm kuzu_cli-*.tar.gz
 # rm -rf ${external_libs_full_path}/libleidenalg
 # rm -rf ${external_libs_full_path}/lib
 # rm -rf ${external_libs_full_path}/lib64
