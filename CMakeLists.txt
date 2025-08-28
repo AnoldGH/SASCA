@@ -52,11 +52,13 @@ else()
         PUBLIC ${CMAKE_SOURCE_DIR}/includes
         PUBLIC ${CMAKE_SOURCE_DIR}/src
         PUBLIC ${CMAKE_SOURCE_DIR}/external_libs/pcg-cpp/include
+        PUBLIC ${CMAKE_SOURCE_DIR}/external_libs/kuzu
     )
     # target_link_libraries(internal_libs PUBLIC igraph::igraph)
     # target_link_libraries(internal_libs PUBLIC libleidenalg::libleidenalg)
     target_link_libraries(internal_libs PUBLIC OpenMP::OpenMP_CXX)
     target_link_libraries(internal_libs PUBLIC Eigen3::Eigen)
+    target_link_libraries(internal_libs PUBLIC ${CMAKE_SOURCE_DIR}/external_libs/kuzu/libkuzu.so)
     target_link_libraries(abm PUBLIC internal_libs)
 
     #[[ Link libraries ]]

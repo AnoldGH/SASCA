@@ -1,10 +1,26 @@
 #include "abm.h"
+#include "kuzu.hpp"
+#include <cstdint>
 #include <iomanip>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 #pragma omp declare reduction(merge_int_pair_vecs : std::vector<std::pair<int, int>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp declare reduction(merge_str_int_pair_vecs : std::vector<std::pair<std::string, int>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp declare reduction(merge_int_vecs : std::vector<int> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 
 #pragma omp declare reduction(custom_merge_vec_int : std::vector<std::pair<int, int>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) initializer(omp_priv = decltype(omp_orig){})
+
+// wip: Kuzu database
+using kuzu::main::Connection;
+Connection& ABM::GetConn() {
+    thread_local std::unique_ptr<Connection> tl_conn;
+    if (!tl_conn) tl_conn = std::make_unique<Connection>(db);
+    return *tl_conn;
+}
 
 int ABM::WriteToLogFile(std::string message, Log message_type) {
     if(this->log_level >= message_type) {
@@ -611,6 +627,65 @@ std::vector<int> ABM::GetGeneratorNodes(Graph* graph, const std::unordered_map<i
     return generator_nodes;
 }
 
+std::unordered_map<int, std::vector<int>> ABM::GetOneAndTwoHopNeighborhoodKuzu(int current_year, const std::vector<int>& generator_nodes) {
+    auto& conn = GetConn();
+
+    // Build the generator nodes list for the IN clause
+    std::string generator_nodes_str = "";
+    for (size_t i = 0; i < generator_nodes.size(); i++) {
+        if (i > 0) generator_nodes_str += ",";
+        generator_nodes_str += std::to_string(generator_nodes[i]);
+    }
+
+    // Prepare parameters for kuzu query
+    kuzu::common::Value current_year_kuzu = kuzu::common::Value::createValue<int64_t>(static_cast<int64_t>(current_year));
+
+    // Find one and two hop neighbors (excluding the node itself).
+    // There can be overlapping between the two.
+    auto query = "\
+        MATCH (n)-[*1]-(neighbor) \
+        WHERE n <> neighbor \
+        AND n.year = $year \
+        AND n.id IN [" + generator_nodes_str + "] \
+        RETURN DISTINCT neighbor.id as neighbor_id, 1 as hop_distance"
+        + (neighborhood_sample == -1 ? "" : "LIMIT " + std::to_string(neighborhood_sample)) + "\
+        UNION \
+        MATCH (n)-[*2]-(neighbor) \
+        WHERE n <> neighbor \
+        AND n.year = $year \
+        AND n.id IN [" + generator_nodes_str + "] \
+        RETURN DISTINCT neighbor.id as neighbor_id, 2 as hop_distance"
+        + (neighborhood_sample == -1 ? "" : "LIMIT " + std::to_string(neighborhood_sample));
+
+    // Note: this is a very lite-weight query, just to test kuzu's performance
+    // auto query = "\
+    //     UNWIND [" + generator_nodes_str + "] AS id\
+    //     MATCH (n:Node {id: id, year: $year})-[r*1..2]-(neighbor:Node)\
+    //     WHERE n.id <> neighbor.id\
+    //     RETURN neighbor.id, length(r)\
+    // ";
+    auto prep = conn.prepare(query);
+    std::unique_ptr<kuzu::main::QueryResult> result = conn.execute(prep.get(),
+        std::make_pair(std::string("year"), current_year_kuzu));
+
+    // Initialize the return structure
+    std::unordered_map<int, std::vector<int>> one_and_two_hop_neighborhood_map;
+    one_and_two_hop_neighborhood_map[1] = std::vector<int>();
+    one_and_two_hop_neighborhood_map[2] = std::vector<int>();
+
+    // Process the query results
+    while (result->hasNext()) {
+        auto row = result->getNext();
+        int neighbor_id = row->getValue(0)->getValue<int64_t>();
+        int hop_distance = row->getValue(1)->getValue<int64_t>();
+
+        // Add the neighbor to the appropriate hop distance list
+        one_and_two_hop_neighborhood_map[hop_distance].push_back(neighbor_id);
+    }
+
+    return one_and_two_hop_neighborhood_map;
+}
+
 std::unordered_map<int, std::vector<int>> ABM::GetOneAndTwoHopNeighborhood(Graph* graph, int current_year, const std::vector<int>& generator_nodes, const std::unordered_map<int, int>& reverse_continuous_node_mapping, int num_hops) {
     std::unordered_map<int, std::vector<int>> one_and_two_hop_neighborhood_map;
     one_and_two_hop_neighborhood_map[1] = std::vector<int>();
@@ -813,11 +888,85 @@ std::unordered_map<int, std::vector<int>> ABM::GetOneAndTwoHopNeighborhoodFromMa
     return one_and_two_hop_neighborhood_map;
 }
 
+void ABM::InitializeKuzuDatabase() {
+    auto& conn = GetConn();
+
+    try {
+        // Create node table
+        std::string create_node_table = "CREATE NODE TABLE Node (id INT64, year INT64, type STRING, PRIMARY KEY (id))";
+        std::unique_ptr<kuzu::main::QueryResult> node_result = conn.query(create_node_table);
+        this->WriteToLogFile("Created Node table in Kuzu database", Log::info);
+
+        // Create edge table
+        std::string create_edge_table = "CREATE REL TABLE CITES (FROM Node TO Node)";
+        std::unique_ptr<kuzu::main::QueryResult> edge_result = conn.query(create_edge_table);
+        this->WriteToLogFile("Created CITES edge table in Kuzu database", Log::info);
+
+    } catch (const std::exception& e) {
+        // If tables already exist, this is fine - just log it
+        this->WriteToLogFile("Database tables may already exist: " + std::string(e.what()), Log::debug);
+    }
+}
+
+void ABM::InsertNodeToKuzu(int node_id, int year, const std::string& type) {
+    auto& conn = GetConn();
+
+    // Create the INSERT query for the node
+    std::string query = "CREATE (n:Node {id: " + std::to_string(node_id) +
+                       ", year: " + std::to_string(year) +
+                       ", type: '" + type + "'})";
+
+    try {
+        std::unique_ptr<kuzu::main::QueryResult> result = conn.query(query);
+        this->WriteToLogFile("Inserted node " + std::to_string(node_id) + " into Kuzu database", Log::debug);
+    } catch (const std::exception& e) {
+        this->WriteToLogFile("Failed to insert node " + std::to_string(node_id) + " into Kuzu database: " + e.what(), Log::error);
+    }
+}
+
+void ABM::InsertEdgeToKuzu(int source_id, int target_id) {
+    auto& conn = GetConn();
+
+    // Create the INSERT query for the edge
+    std::string query = "MATCH (source:Node {id: " + std::to_string(source_id) + "}) "
+                       "MATCH (target:Node {id: " + std::to_string(target_id) + "}) "
+                       "CREATE (source)-[:CITES]->(target)";
+
+    try {
+        std::unique_ptr<kuzu::main::QueryResult> result = conn.query(query);
+        this->WriteToLogFile("Inserted edge " + std::to_string(source_id) + " -> " + std::to_string(target_id) + " into Kuzu database", Log::debug);
+    } catch (const std::exception& e) {
+        this->WriteToLogFile("Failed to insert edge " + std::to_string(source_id) + " -> " + std::to_string(target_id) + " into Kuzu database: " + e.what(), Log::error);
+    }
+}
+
 int ABM::main() {
     std::cerr << "running with asserts" << std::endl;
+
+    // Initialize Kuzu database schema
+    this->InitializeKuzuDatabase();
+    std::cerr << "kuzu database initialized" << std::endl;
+
     Graph* graph = new Graph(this->edgelist, this->nodelist);
     this->WriteToLogFile("loaded graph", Log::info);
     this->InitializeSeedFitness(graph);
+
+    // TODO: we don't need to store attributes in the graph when using a database for nodes. This is just to accommodate existing code.
+    // Insert initial seed nodes and edges into Kuzu database
+    this->WriteToLogFile("Inserting initial seed nodes and edges into Kuzu database", Log::info);
+    for (const auto& node_id : graph->GetNodeSet()) {
+        int year = graph->GetIntAttribute("year", node_id);
+        std::string type = graph->GetStringAttribute("type", node_id);
+        this->InsertNodeToKuzu(node_id, year, type);
+    }
+
+    // Insert initial edges
+    for (const auto& [source_id, neighbors] : graph->GetForwardAdjMap()) {
+        for (const auto& target_id : neighbors) {
+            this->InsertEdgeToKuzu(source_id, target_id);
+        }
+    }
+    this->WriteToLogFile("Finished inserting initial seed data into Kuzu database", Log::info);
     /* this->InitializeFitness(graph); */
 
     /* node ids to continous integer from 0 */
@@ -901,6 +1050,10 @@ int ABM::main() {
             new_nodes_vec.push_back(next_node_id);
             graph->SetIntAttribute("year", next_node_id, current_year);
             graph->SetStringAttribute("type", next_node_id, "agent");
+
+            // Insert the new node into the Kuzu database
+            this->InsertNodeToKuzu(next_node_id, current_year, "agent");
+
             next_node_id ++;
         }
         this->LogTime(current_year, "Create new node ids");
@@ -924,7 +1077,6 @@ int ABM::main() {
             std::vector<std::pair<int, int>> local_new_edges_vec;
             std::vector<std::pair<std::string, int>> local_parallel_stage_time_vec;
 
-
             int citations[250]; // out-degree assumed to be max 249
             int new_node = new_nodes_vec[i];
             int weight_arr_index = continuous_node_mapping[new_node] - initial_graph_size;
@@ -933,7 +1085,7 @@ int ABM::main() {
             double fit_weight = fit_weight_arr[weight_arr_index];
             double alpha = alpha_arr[weight_arr_index];
             std::vector<int> generator_nodes = this->GetGraphAttributesGeneratorNodes(graph, new_node);
-            std::unordered_map<int, std::vector<int>> one_and_two_hop_neighborhood_map = this->GetOneAndTwoHopNeighborhood(graph, current_year, generator_nodes, reverse_continuous_node_mapping, 2);
+            std::unordered_map<int, std::vector<int>> one_and_two_hop_neighborhood_map = this->GetOneAndTwoHopNeighborhoodKuzu(current_year, generator_nodes);
             sampled_neighborhood_sizes_map[i] = {one_and_two_hop_neighborhood_map[1].size(), one_and_two_hop_neighborhood_map[2].size()};
             local_prev_time = this->LocalLogTime(local_parallel_stage_time_vec, local_prev_time, "retrieve one and two hop neighborhoods");
             int num_generator_node_citation = generator_nodes.size(); // should be 1 for now
@@ -993,6 +1145,9 @@ int ABM::main() {
             int new_node = new_edges_vec[i].first;
             int destination_id = new_edges_vec[i].second;
             graph->AddEdge({new_node, destination_id});
+
+            // Insert the new edge into the Kuzu database
+            this->InsertEdgeToKuzu(new_node, destination_id);
         }
         this->LogTime(current_year, "Add edges to graph");
 

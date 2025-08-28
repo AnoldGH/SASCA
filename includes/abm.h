@@ -17,14 +17,17 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 #include "graph.h"
+#include "kuzu.hpp"
 #include "pcg_random.hpp"
 
 
 enum Log {info, debug, error = -1};
 
+// wip: kuzu database
+using kuzu::main::Connection;
 class ABM {
     public:
-        ABM(std::string edgelist, std::string nodelist, std::string out_degree_bag, std::string recency_probabilities, std::string planted_nodes, double alpha, double minimum_alpha, double fully_random_citations, double preferential_weight, double recency_weight, double fitness_weight, double minimum_preferential_weight, double minimum_recency_weight, double minimum_fitness_weight, double growth_rate, int num_cycles, double same_year_proportion, int neighborhood_sample, std::string output_file, std::string auxiliary_information_file, std::string log_file, int num_processors, int log_level) : edgelist(edgelist), nodelist(nodelist), out_degree_bag(out_degree_bag), recency_probabilities(recency_probabilities), planted_nodes(planted_nodes), alpha(alpha), minimum_alpha(minimum_alpha), fully_random_citations(fully_random_citations), preferential_weight(preferential_weight), recency_weight(recency_weight), fitness_weight(fitness_weight), minimum_preferential_weight(minimum_preferential_weight), minimum_recency_weight(minimum_recency_weight), minimum_fitness_weight(minimum_fitness_weight), growth_rate(growth_rate), num_cycles(num_cycles), same_year_proportion(same_year_proportion), neighborhood_sample(neighborhood_sample), output_file(output_file), auxiliary_information_file(auxiliary_information_file), log_file(log_file), num_processors(num_processors), log_level(log_level) {
+        ABM(std::string edgelist, std::string nodelist, std::string out_degree_bag, std::string recency_probabilities, std::string planted_nodes, double alpha, double minimum_alpha, double fully_random_citations, double preferential_weight, double recency_weight, double fitness_weight, double minimum_preferential_weight, double minimum_recency_weight, double minimum_fitness_weight, double growth_rate, int num_cycles, double same_year_proportion, int neighborhood_sample, std::string output_file, std::string auxiliary_information_file, std::string log_file, int num_processors, int log_level, kuzu::main::Database* db) : edgelist(edgelist), nodelist(nodelist), out_degree_bag(out_degree_bag), recency_probabilities(recency_probabilities), planted_nodes(planted_nodes), alpha(alpha), minimum_alpha(minimum_alpha), fully_random_citations(fully_random_citations), preferential_weight(preferential_weight), recency_weight(recency_weight), fitness_weight(fitness_weight), minimum_preferential_weight(minimum_preferential_weight), minimum_recency_weight(minimum_recency_weight), minimum_fitness_weight(minimum_fitness_weight), growth_rate(growth_rate), num_cycles(num_cycles), same_year_proportion(same_year_proportion), neighborhood_sample(neighborhood_sample), output_file(output_file), auxiliary_information_file(auxiliary_information_file), log_file(log_file), num_processors(num_processors), log_level(log_level), db(db) {
             if(this->log_level > -1) {
                 this->start_time = std::chrono::steady_clock::now();
                 this->log_file_handle.open(this->log_file);
@@ -46,6 +49,13 @@ class ABM {
         }
 
         int main();
+
+        // wip: Kuzu database
+        Connection& GetConn();
+        void InitializeKuzuDatabase();
+        void InsertNodeToKuzu(int node_id, int year, const std::string& type);
+        void InsertEdgeToKuzu(int source_id, int target_id);
+
         int WriteToLogFile(std::string message, Log message_type);
         void ReadOutDegreeBag();
         void ReadRecencyProbabilities();
@@ -58,6 +68,7 @@ class ABM {
         std::vector<int> GetGraphAttributesGeneratorNodes(Graph* graph, int new_node) const;
         std::vector<int> GetNeighborhood(Graph* graph, const std::vector<int>& generator_nodes, const std::unordered_map<int, int>& reverse_continuous_node_mapping);
         std::unordered_map<int, std::vector<int>> GetOneAndTwoHopNeighborhood(Graph* graph, int current_year, const std::vector<int>& generator_nodes, const std::unordered_map<int, int>& reverse_continuous_node_mapping, int num_hops);
+        std::unordered_map<int, std::vector<int>> GetOneAndTwoHopNeighborhoodKuzu(int current_year, const std::vector<int>& generator_nodes);
         void FillInDegreeArr(Graph* graph, const std::unordered_map<int, int>& continuous_node_mapping, int* in_degree_arr);
         void InitializeFitness(Graph* graph);
         void FillFitnessArr(Graph* graph, const std::unordered_map<int, int>& continuous_node_mapping, int current_year, int* fitness_arr);
@@ -83,6 +94,7 @@ class ABM {
         std::chrono::time_point<std::chrono::steady_clock> LocalLogTime(std::vector<std::pair<std::string, int>>& local_parallel_stage_time_vec, std::chrono::time_point<std::chrono::steady_clock> local_prev_time, std::string label);
         void WriteTimingFile(int start_year, int end_year);
         std::unordered_map<int, std::vector<int>> GetOneAndTwoHopNeighborhoodFromMatrix(Graph* graph, int current_graph_size, const Eigen::SparseMatrix<int, 0, int>& two_hop_matrix, std::vector<int> generator_nodes, const std::unordered_map<int, int>& continuous_node_mapping, const std::unordered_map<int, int>& reverse_continuous_node_mapping);
+        kuzu::main::Database *db;
         /* void InitializeAuthors(Graph* graph, const std::unordered_map<int, int>& continuous_node_mapping, std::unordered_map<int, std::vector<int>>& author_to_publication_map, std::unordered_map<int, std::vector<int>>& number_published_to_author_map, std::unordered_map<int, int>& author_remaining_years_map); */
         /* void AgeAuthors(std::unordered_map<int, std::vector<int>>& author_to_publication_map, std::unordered_map<int, std::vector<int>>& number_published_to_author_map, std::unordered_map<int, int>& author_remaining_years_map); */
 

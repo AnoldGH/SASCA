@@ -1,9 +1,11 @@
+#include <cstdint>
 #include <iostream>
 
 #include "argparse.h"
 #include "library.h"
 #include "abm.h"
 
+#include "kuzu.hpp"
 
 int main(int argc, char* argv[]) {
     argparse::ArgumentParser main_program("abm");
@@ -125,7 +127,8 @@ int main(int argc, char* argv[]) {
     std::string log_file = main_program.get<std::string>("--log-file");
     int num_processors = main_program.get<int>("--num-processors");
     int log_level = main_program.get<int>("--log-level") - 1; // so that enum is cleaner
-    ABM* abm = new ABM(edgelist, nodelist, out_degree_bag, recency_probabilities, planted_nodes, alpha, minimum_alpha, fully_random_citations, preferential_weight, recency_weight, fitness_weight, minimum_preferential_weight, minimum_recency_weight, minimum_fitness_weight, growth_rate, num_cycles, same_year_proportion, neighborhood_sample, output_file, auxiliary_information_file, log_file, num_processors, log_level);
+    kuzu::main::Database db(":memory:", kuzu::main::SystemConfig((uint64_t)(1 << 30), num_processors, false));
+    ABM* abm = new ABM(edgelist, nodelist, out_degree_bag, recency_probabilities, planted_nodes, alpha, minimum_alpha, fully_random_citations, preferential_weight, recency_weight, fitness_weight, minimum_preferential_weight, minimum_recency_weight, minimum_fitness_weight, growth_rate, num_cycles, same_year_proportion, neighborhood_sample, output_file, auxiliary_information_file, log_file, num_processors, log_level, &db);
     abm->main();
     delete abm;
 }
