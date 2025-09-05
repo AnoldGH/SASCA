@@ -73,6 +73,9 @@ class ABM {
         void InitializeKuzuDatabase();
         void InsertNodeToKuzu(int node_id, int year, const std::string& type);
         void InsertEdgeToKuzu(int source_id, int target_id);
+        void SampleFromKuzu(int n);
+        std::unordered_map<int, std::vector<int>> GetOneAndTwoHopNeighborhoodKuzu(int current_year, const std::vector<int>& generator_nodes);
+        std::unordered_map<int, std::vector<int>> GetNHopNeighborhoodKuzu(int current_year, const std::vector<int>& generator_nodes, int num_hops);
 
         int WriteToLogFile(std::string message, Log message_type);
         bool ValidateArguments();
@@ -89,7 +92,6 @@ class ABM {
         std::vector<int> GetNeighborhood(Graph* graph, const std::vector<int>& generator_nodes, const std::unordered_map<int, int>& reverse_continuous_node_mapping);
         std::unordered_map<int, std::vector<int>> GetNeighborhoodMap(Graph* graph, int current_year, const std::vector<int>& generator_nodes, int num_hops);
         std::unordered_map<int, std::vector<int>> GetOneAndTwoDistanceNeighborhoods(Graph* graph, int current_year, const std::vector<int>& generator_nodes, int num_hops);
-        std::unordered_map<int, std::vector<int>> GetOneAndTwoHopNeighborhoodKuzu(int current_year, const std::vector<int>& generator_nodes);
         std::unordered_map<int, std::vector<int>> GetNHopNeighborhood(Graph* graph, int current_year, const std::vector<int>& generator_nodes, int num_hops);
         int GetBinIndex(int year_diff);
         void InitializeBinBoundaries();

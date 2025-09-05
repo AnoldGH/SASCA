@@ -659,18 +659,20 @@ std::unordered_map<int, std::vector<int>> ABM::GetOneAndTwoHopNeighborhoodKuzu(i
     // Find one and two hop neighbors (excluding the node itself).
     // There can be overlapping between the two.
     auto query = "\
-        MATCH (n)-[*1]-(neighbor) \
+        MATCH (n:Node)-[*1]-(neighbor:Node) \
         WHERE n <> neighbor \
         AND n.year = $year \
         AND n.id IN [" + generator_nodes_str + "] \
-        RETURN DISTINCT neighbor.id as neighbor_id, 1 as hop_distance"
+        RETURN DISTINCT neighbor.id as neighbor_id, 1 as hop_distance \
+        ORDER BY random() "
         + (neighborhood_sample == -1 ? "" : "LIMIT " + std::to_string(neighborhood_sample)) + "\
         UNION \
-        MATCH (n)-[*2]-(neighbor) \
+        MATCH (n:Node)-[*2]-(neighbor:Node) \
         WHERE n <> neighbor \
         AND n.year = $year \
         AND n.id IN [" + generator_nodes_str + "] \
-        RETURN DISTINCT neighbor.id as neighbor_id, 2 as hop_distance"
+        RETURN DISTINCT neighbor.id as neighbor_id, 2 as hop_distance \
+        ORDER BY random() "
         + (neighborhood_sample == -1 ? "" : "LIMIT " + std::to_string(neighborhood_sample));
 
     auto prep = conn.prepare(query);
@@ -693,6 +695,53 @@ std::unordered_map<int, std::vector<int>> ABM::GetOneAndTwoHopNeighborhoodKuzu(i
     }
 
     return one_and_two_hop_neighborhood_map;
+}
+
+std::unordered_map<int, std::vector<int>> ABM::GetNHopNeighborhoodKuzu(int current_year, const std::vector<int>& generator_nodes, int num_hops) {
+    auto& conn = GetConn();
+
+    // Build the generator nodes list for the IN clause
+    std::string generator_nodes_str = "";
+    for (size_t i = 0; i < generator_nodes.size(); i++) {
+        if (i > 0) generator_nodes_str += ",";
+        generator_nodes_str += std::to_string(generator_nodes[i]);
+    }
+
+    // Prepare parameters for kuzu query
+    kuzu::common::Value current_year_kuzu = kuzu::common::Value::createValue<int64_t>(static_cast<int64_t>(current_year));
+    kuzu::common::Value num_hops_kuzu = kuzu::common::Value::createValue<int64_t>(static_cast<int64_t>(num_hops));
+
+    // Find one and two hop neighbors (excluding the node itself).
+    // There can be overlapping between the two.
+    auto query = "\
+        MATCH (n:Node)-[p:*1..$nhops]-(neighbor:Node) \
+        WHERE n <> neighbor \
+        AND n.year = $year \
+        AND n.id IN [" + generator_nodes_str + "] \
+        RETURN neighbor.id as neighbor_id, min(length(p)) as hop_distance \
+        ORDER BY random() " + (neighborhood_sample == -1 ? "" : "LIMIT " + std::to_string(neighborhood_sample));
+
+    auto prep = conn.prepare(query);
+    std::unique_ptr<kuzu::main::QueryResult> result = conn.execute(prep.get(),
+        std::make_pair(std::string("year"), current_year_kuzu),
+        std::make_pair(std::string("nhops"), num_hops_kuzu)
+    );
+
+    // Initialize the return structure
+    std::unordered_map<int, std::vector<int>> n_hop_neighborhood_map;
+    n_hop_neighborhood_map[1] = std::vector<int>();
+
+    // Process the query results
+    while (result->hasNext()) {
+        auto row = result->getNext();
+        int neighbor_id = row->getValue(0)->getValue<int64_t>();
+        int hop_distance = row->getValue(1)->getValue<int64_t>();
+
+        // Add the neighbor to the appropriate hop distance list
+        n_hop_neighborhood_map[1].push_back(neighbor_id);
+    }
+
+    return n_hop_neighborhood_map;
 }
 
 std::unordered_map<int, int> ABM::BinOutdegrees(const std::unordered_map<int, std::vector<int>>& binned_neighborhood, int total_outdegree, std::unordered_map<int, double> binned_recency_probabilities) {
@@ -872,9 +921,11 @@ std::unordered_map<int, std::vector<int>> ABM::BinNeighborhood(Graph* graph, int
 std::unordered_map<int, std::vector<int>> ABM::GetNeighborhoodMap(Graph* graph, int current_year, const std::vector<int>& generator_nodes, int num_hops) {
     if (this->use_alpha) {
         // create distance 1 and distance 2 neighborhoods
-        return this->GetOneAndTwoDistanceNeighborhoods(graph, current_year, generator_nodes, num_hops);
+        // return this->GetOneAndTwoDistanceNeighborhoods(graph, current_year, generator_nodes, num_hops);
+        return this->GetOneAndTwoHopNeighborhoodKuzu(current_year, generator_nodes);
     } else {
-        return this->GetNHopNeighborhood(graph, current_year, generator_nodes, num_hops);
+        // return this->GetNHopNeighborhood(graph, current_year, generator_nodes, num_hops);
+        return this->GetNHopNeighborhoodKuzu(current_year, generator_nodes, num_hops);
     }
 }
 
@@ -1384,6 +1435,8 @@ int ABM::main() {
     /*     this->InitializeSeedFitness(graph); */
     /* } */
     /* this->InitializeFitness(graph); */
+
+    InitializeKuzuDatabase();
 
     /* node ids to continous integer from 0 */
     std::unordered_map<int, int> continuous_node_mapping = this->BuildContinuousNodeMapping(graph);
