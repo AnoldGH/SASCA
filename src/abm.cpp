@@ -653,46 +653,60 @@ std::unordered_map<int, std::vector<int>> ABM::GetOneAndTwoHopNeighborhoodKuzu(i
         generator_nodes_str += std::to_string(generator_nodes[i]);
     }
 
+    // this->WriteToLogFile("Generator nodes: " + generator_nodes_str, Log::debug);
+
     // Prepare parameters for kuzu query
     kuzu::common::Value current_year_kuzu = kuzu::common::Value::createValue<int64_t>(static_cast<int64_t>(current_year));
 
     // Find one and two hop neighbors (excluding the node itself).
     // There can be overlapping between the two.
-    auto query = "\
-        MATCH (n:Node)-[*1]-(neighbor:Node) \
-        WHERE n <> neighbor \
-        AND n.year = $year \
-        AND n.id IN [" + generator_nodes_str + "] \
-        RETURN DISTINCT neighbor.id as neighbor_id, 1 as hop_distance \
-        ORDER BY random() "
-        + (neighborhood_sample == -1 ? "" : "LIMIT " + std::to_string(neighborhood_sample)) + "\
-        UNION \
-        MATCH (n:Node)-[*2]-(neighbor:Node) \
-        WHERE n <> neighbor \
-        AND n.year = $year \
-        AND n.id IN [" + generator_nodes_str + "] \
-        RETURN DISTINCT neighbor.id as neighbor_id, 2 as hop_distance \
-        ORDER BY random() "
-        + (neighborhood_sample == -1 ? "" : "LIMIT " + std::to_string(neighborhood_sample));
-
-    auto prep = conn.prepare(query);
-    std::unique_ptr<kuzu::main::QueryResult> result = conn.execute(prep.get(),
-        std::make_pair(std::string("year"), current_year_kuzu));
 
     // Initialize the return structure
     std::unordered_map<int, std::vector<int>> one_and_two_hop_neighborhood_map;
     one_and_two_hop_neighborhood_map[1] = std::vector<int>();
     one_and_two_hop_neighborhood_map[2] = std::vector<int>();
 
-    // Process the query results
+    // Find one hop neighbors
+    auto query = "\
+        MATCH (n:Node)-[*1]-(neighbor:Node) \
+        WHERE n <> neighbor \
+        AND n.id IN [" + generator_nodes_str + "] \
+        RETURN neighbor.id "
+        + (neighborhood_sample == -1 ? "" : ("ORDER BY random() LIMIT " + std::to_string(neighborhood_sample)));
+
+    auto prep = conn.prepare(query);
+    std::unique_ptr<kuzu::main::QueryResult> result = conn.execute(prep.get());
+
+    // Process the 1-hop query results
     while (result->hasNext()) {
         auto row = result->getNext();
         int neighbor_id = row->getValue(0)->getValue<int64_t>();
-        int hop_distance = row->getValue(1)->getValue<int64_t>();
 
         // Add the neighbor to the appropriate hop distance list
-        one_and_two_hop_neighborhood_map[hop_distance].push_back(neighbor_id);
+        one_and_two_hop_neighborhood_map[1].push_back(neighbor_id);
     }
+
+    // Find two hop neighbors
+    query  = "\
+        MATCH (n:Node)-[*2]-(neighbor:Node) \
+        WHERE n <> neighbor \
+        AND n.id IN [" + generator_nodes_str + "] \
+        RETURN DISTINCT neighbor.id "
+        + (neighborhood_sample == -1 ? "" : ("ORDER BY random() LIMIT " + std::to_string(neighborhood_sample)));
+
+    prep = conn.prepare(query);
+    result = conn.execute(prep.get());
+
+    // Process the 2-hop query results
+    while (result->hasNext()) {
+        auto row = result->getNext();
+        int neighbor_id = row->getValue(0)->getValue<int64_t>();
+
+        // Add the neighbor to the appropriate hop distance list
+        one_and_two_hop_neighborhood_map[2].push_back(neighbor_id);
+    }
+
+    this->WriteToLogFile("Numbers of nodes sampled: " + std::to_string(one_and_two_hop_neighborhood_map[1].size()) + ", " + std::to_string(one_and_two_hop_neighborhood_map[2].size()) + ", Generator: " + generator_nodes_str, Log::debug);
 
     return one_and_two_hop_neighborhood_map;
 }
@@ -707,25 +721,25 @@ std::unordered_map<int, std::vector<int>> ABM::GetNHopNeighborhoodKuzu(int curre
         generator_nodes_str += std::to_string(generator_nodes[i]);
     }
 
+    // this->WriteToLogFile("Generator nodes: " + generator_nodes_str, Log::debug);
+
     // Prepare parameters for kuzu query
     kuzu::common::Value current_year_kuzu = kuzu::common::Value::createValue<int64_t>(static_cast<int64_t>(current_year));
-    kuzu::common::Value num_hops_kuzu = kuzu::common::Value::createValue<int64_t>(static_cast<int64_t>(num_hops));
+    // kuzu::common::Value num_hops_kuzu = kuzu::common::Value::createValue<int64_t>(static_cast<int64_t>(num_hops));
 
     // Find one and two hop neighbors (excluding the node itself).
     // There can be overlapping between the two.
     auto query = "\
-        MATCH (n:Node)-[p:*1..$nhops]-(neighbor:Node) \
+        MATCH (n:Node)-[p*1.." + std::to_string(num_hops) + "]-(neighbor:Node) \
         WHERE n <> neighbor \
-        AND n.year = $year \
         AND n.id IN [" + generator_nodes_str + "] \
-        RETURN neighbor.id as neighbor_id, min(length(p)) as hop_distance \
-        ORDER BY random() " + (neighborhood_sample == -1 ? "" : "LIMIT " + std::to_string(neighborhood_sample));
+        RETURN neighbor.id as neighbor_id, min(length(p)) as hop_distance "
+        + (neighborhood_sample == -1 ? "" : ("ORDER BY random() LIMIT " + std::to_string(num_hops * neighborhood_sample)));
+
+    // this->WriteToLogFile(query, Log::debug);
 
     auto prep = conn.prepare(query);
-    std::unique_ptr<kuzu::main::QueryResult> result = conn.execute(prep.get(),
-        std::make_pair(std::string("year"), current_year_kuzu),
-        std::make_pair(std::string("nhops"), num_hops_kuzu)
-    );
+    std::unique_ptr<kuzu::main::QueryResult> result = conn.execute(prep.get());
 
     // Initialize the return structure
     std::unordered_map<int, std::vector<int>> n_hop_neighborhood_map;
@@ -735,11 +749,12 @@ std::unordered_map<int, std::vector<int>> ABM::GetNHopNeighborhoodKuzu(int curre
     while (result->hasNext()) {
         auto row = result->getNext();
         int neighbor_id = row->getValue(0)->getValue<int64_t>();
-        int hop_distance = row->getValue(1)->getValue<int64_t>();
 
         // Add the neighbor to the appropriate hop distance list
         n_hop_neighborhood_map[1].push_back(neighbor_id);
     }
+
+    this->WriteToLogFile("Numbers of nodes sampled: " + std::to_string(n_hop_neighborhood_map[1].size()) + ", Generator: " + generator_nodes_str, Log::debug);
 
     return n_hop_neighborhood_map;
 }
@@ -1377,14 +1392,24 @@ void ABM::InitializeKuzuDatabase() {
 
     try {
         // Create node table
-        std::string create_node_table = "CREATE NODE TABLE Node (id INT64, year INT64, type STRING, PRIMARY KEY (id))";
+        std::string create_node_table = "CREATE NODE TABLE Node (id INT64, year INT64, PRIMARY KEY (id))";
         std::unique_ptr<kuzu::main::QueryResult> node_result = conn.query(create_node_table);
         this->WriteToLogFile("Created Node table in Kuzu database", Log::info);
 
         // Create edge table
-        std::string create_edge_table = "CREATE REL TABLE CITES (FROM Node TO Node)";
+        std::string create_edge_table = "CREATE REL TABLE Cites (FROM Node TO Node)";
         std::unique_ptr<kuzu::main::QueryResult> edge_result = conn.query(create_edge_table);
-        this->WriteToLogFile("Created CITES edge table in Kuzu database", Log::info);
+        this->WriteToLogFile("Created Cites edge table in Kuzu database", Log::info);
+
+        // Copy seed nodes
+        std::string copy_seed_nodes = "COPY Node FROM \""+ this->nodelist +"\" (header=true)";
+        std::unique_ptr<kuzu::main::QueryResult> copy_node_result = conn.query(copy_seed_nodes);
+        this->WriteToLogFile("Copied seed nodes into Kuzu database: " + this->nodelist, Log::info);
+
+        // Copy seed edges
+        std::string copy_seed_edges = "COPY Cites FROM \""+ this->edgelist +"\" (header=true)";
+        std::unique_ptr<kuzu::main::QueryResult> copy_seed_result = conn.query(copy_seed_edges);
+        this->WriteToLogFile("Copied seed edges into Kuzu database: " + this->edgelist, Log::info);
 
     } catch (const std::exception& e) {
         // If tables already exist, this is fine - just log it
@@ -1397,12 +1422,11 @@ void ABM::InsertNodeToKuzu(int node_id, int year, const std::string& type) {
 
     // Create the INSERT query for the node
     std::string query = "CREATE (n:Node {id: " + std::to_string(node_id) +
-                       ", year: " + std::to_string(year) +
-                       ", type: '" + type + "'})";
+                       ", year: " + std::to_string(year) + "})";
 
     try {
         std::unique_ptr<kuzu::main::QueryResult> result = conn.query(query);
-        this->WriteToLogFile("Inserted node " + std::to_string(node_id) + " into Kuzu database", Log::debug);
+        // this->WriteToLogFile("Inserted node " + std::to_string(node_id) + " into Kuzu database", Log::debug);
     } catch (const std::exception& e) {
         this->WriteToLogFile("Failed to insert node " + std::to_string(node_id) + " into Kuzu database: " + e.what(), Log::error);
     }
@@ -1414,11 +1438,11 @@ void ABM::InsertEdgeToKuzu(int source_id, int target_id) {
     // Create the INSERT query for the edge
     std::string query = "MATCH (source:Node {id: " + std::to_string(source_id) + "}) "
                        "MATCH (target:Node {id: " + std::to_string(target_id) + "}) "
-                       "CREATE (source)-[:CITES]->(target)";
+                       "CREATE (source)-[:Cites]->(target)";
 
     try {
         std::unique_ptr<kuzu::main::QueryResult> result = conn.query(query);
-        this->WriteToLogFile("Inserted edge " + std::to_string(source_id) + " -> " + std::to_string(target_id) + " into Kuzu database", Log::debug);
+        // this->WriteToLogFile("Inserted edge " + std::to_string(source_id) + " -> " + std::to_string(target_id) + " into Kuzu database", Log::debug);
     } catch (const std::exception& e) {
         this->WriteToLogFile("Failed to insert edge " + std::to_string(source_id) + " -> " + std::to_string(target_id) + " into Kuzu database: " + e.what(), Log::error);
     }
@@ -1541,6 +1565,7 @@ int ABM::main() {
 
             int citations[250]; // out-degree assumed to be max 249 MARK: macro 250 or better would be parse outdegree bag and set to max outdegree
             int new_node = new_nodes_vec[i];
+            // this->WriteToLogFile("On new node #" + new_node, Log::debug);
             // continuous_node_mapping = node id -> 0..n but guaranteed 0 .. initial graph size are seed nodes
             // initial graphsize .. n are agent nodes
             int weight_arr_index = continuous_node_mapping[new_node] - initial_graph_size;
