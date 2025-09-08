@@ -1402,12 +1402,12 @@ void ABM::InitializeKuzuDatabase() {
         this->WriteToLogFile("Created Cites edge table in Kuzu database", Log::info);
 
         // Copy seed nodes
-        std::string copy_seed_nodes = "COPY Node FROM \""+ this->nodelist +"\" (header=true)";
+        std::string copy_seed_nodes = "COPY Node FROM \""+ this->nodelist +"\" (header=true, file_format='csv')";
         std::unique_ptr<kuzu::main::QueryResult> copy_node_result = conn.query(copy_seed_nodes);
         this->WriteToLogFile("Copied seed nodes into Kuzu database: " + this->nodelist, Log::info);
 
         // Copy seed edges
-        std::string copy_seed_edges = "COPY Cites FROM \""+ this->edgelist +"\" (header=true)";
+        std::string copy_seed_edges = "COPY Cites FROM \""+ this->edgelist +"\" (header=true, file_format='csv')";
         std::unique_ptr<kuzu::main::QueryResult> copy_seed_result = conn.query(copy_seed_edges);
         this->WriteToLogFile("Copied seed edges into Kuzu database: " + this->edgelist, Log::info);
 

@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
     std::string log_file = reader.Get("General", "log_file", "NOTFOUND");
     int num_processors = reader.GetInteger("General", "num_processors", -42);
     int log_level = reader.GetInteger("General", "log_level", -42);
-    kuzu::main::Database db(":memory:", kuzu::main::SystemConfig((uint64_t)(1 << 30), num_processors, false));
+    kuzu::main::Database db(":memory:", kuzu::main::SystemConfig((uint64_t)(36ULL << 30), num_processors, false));
     ABM* abm = new ABM(edgelist, nodelist, out_degree_bag, recency_table, recency_bins, alpha, minimum_alpha, use_alpha, start_from_checkpoint, planted_nodes, fully_random_citations, preferential_weight, fitness_weight, fitness_value_min, fitness_value_max, minimum_preferential_weight, minimum_fitness_weight, growth_rate, num_cycles, same_year_citations, neighborhood_sample, output_file, auxiliary_information_file, log_file, num_processors, log_level, &db);
     abm->main();
     delete abm;
