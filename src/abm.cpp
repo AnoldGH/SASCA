@@ -1471,6 +1471,17 @@ int ABM::main() {
 
         // Per-year output - TODO: this should be configurable
         graph->WriteGraph(this->output_file + "_" + std::to_string(current_year));
+
+        this->UpdateGraphAttributesWeights(graph, initial_next_node_id, pa_weight_arr, fit_weight_arr, final_graph_size - initial_graph_size);
+        this->UpdateGraphAttributesOutDegrees(graph, initial_next_node_id, out_degree_arr, final_graph_size - initial_graph_size);
+
+        for(auto const& node_id : graph->GetNodeSet()) {
+            graph->SetIntAttribute("in_degree", node_id, graph->GetInDegree(node_id));
+            graph->SetIntAttribute("out_degree", node_id, graph->GetOutDegree(node_id));
+            int weight_arr_index = continuous_node_mapping[node_id] - initial_graph_size;
+            graph->SetDoubleAttribute("alpha", node_id, alpha_arr[weight_arr_index]);
+        }
+
         graph->WriteAttributes(this->auxiliary_information_file + "_" + std::to_string(current_year));
     }
 
