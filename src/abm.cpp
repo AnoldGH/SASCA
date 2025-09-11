@@ -1468,6 +1468,10 @@ int ABM::main() {
         new_nodes_vec.clear();
         new_edges_vec.clear();
         same_year_source_nodes.clear();
+
+        // Per-year output - TODO: this should be configurable
+        graph->WriteGraph(this->output_file + "_" + std::to_string(current_year));
+        graph->WriteAttributes(this->auxiliary_information_file + "_" + std::to_string(current_year));
     }
 
     this->WriteToLogFile("finished sim", Log::info);
